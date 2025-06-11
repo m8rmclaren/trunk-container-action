@@ -1,0 +1,84 @@
+name: Comment on PR
+
+on:
+  workflow_call:
+    inputs:
+      ghcr_org:
+        description: The name of the org to publish GHCR packages into. e.g., 'keyfactor'
+        required: true
+        type: string
+      ghcr_image_name:
+        description: The name of the image. e.g., 'keyfactor-operator'
+        required: true
+        type: string
+      ref:
+        description: Which git ref in the trunk-container-action repo should be checked out to carry out release tasks
+        type: string
+        required: false
+        default: "main"
+
+    secrets:
+      clone_token:
+        required: true
+      gh_token:
+        required: true
+
+jobs:
+  comment-on-pr:
+    if: github.event_name == 'pull_request' && startsWith(github.event.pull_request.base.ref, 'release-')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      # Checkout the trunk-container-action repository
+      - uses: actions/checkout@v4
+        with:
+          repository: 'Keyfactor/trunk-container-action'
+          path: './trunk-container-action/'
+          token: ${{ secrets.clone_token }}
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Calculate next version
+        id: calculate_version
+        run: python trunk-container-action/scripts/calculate_next_release.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.gh_token }}
+          GHCR_ORG: ${{ inputs.ghcr_org }}
+          GHCR_IMAGE_NAME: ${{ inputs.ghcr_image_name }}
+          BASE_REF_NAME: ${{ github.event.pull_request.base.ref }}
+
+      - name: Comment on Pull Request
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.gh_token }}
+          script: |
+            const nextTag = `\`${{ env.NEXT_TAG }}\``;
+            const buildImage = `${{ env.BUILD_IMAGE }}` === 'true';
+            const retagImage = `${{ env.RETAG_IMAGE }}` === 'true';
+            const sourceTag = `\`${{ env.SOURCE_TAG }}\``;
+            const ref = `\`${{ github.event.pull_request.base.ref }}\``;
+
+            let message = `### Release Plan\n\nThe next tag will be ${nextTag}.\n\n`;
+
+            if (retagImage) {
+              message += `${sourceTag} is the latest release candidate for ${ref}. If merged, ${sourceTag} will be retagged as ${nextTag} and latest.\n`;
+            } else if (buildImage) {
+              message += `This PR proposes a hotfix to ${ref}. If merged, a new image will be built and tagged as ${nextTag}.\n`;
+            } else {
+              message += `No image will be built or retagged.\n`;
+            }
+
+            await github.rest.issues.createComment({
+              issue_number: context.payload.pull_request.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: message
+            });

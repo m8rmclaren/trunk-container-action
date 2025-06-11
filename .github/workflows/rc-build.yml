@@ -1,0 +1,221 @@
+name: Release Candidate Build
+
+on:
+  workflow_call:
+    inputs:
+      ghcr_org:
+        description: The name of the org to publish GHCR packages into. e.g., 'keyfactor'
+        required: true
+        type: string
+      ghcr_image_name:
+        description: The name of the image. e.g., 'keyfactor-operator'
+        required: true
+        type: string
+      platforms:
+        description: JSON formatted list of images. e.g., ["linux/amd64","linux/arm64"]
+        required: false
+        type: string
+        default: '["linux/amd64"]'
+      cache_language:
+        description: The language of the project being built. Options are 'go', TODO
+        required: false
+        type: string
+      ref:
+        description: Which git ref in the trunk-container-action repo should be checked out to carry out release tasks
+        type: string
+        required: false
+        default: "main"
+      docker_context:
+        description: The context (directory) that Docker will use to build the image. e.g., {{defaultContext}}:website
+        type: string
+        required: false
+      build_args:
+        description: Build args passed directly to docker/build-push-action 
+        type: string
+        required: false
+        default: ""
+
+    secrets:
+      clone_token:
+        required: true
+      gh_token:
+        required: true
+      ghcr_username:
+        required: true
+      ghcr_password:
+        required: true
+      build_secrets:
+        description: Build secrets passed directly to docker/build-push-action 
+        required: false
+
+    outputs:
+      pr_version:
+        description: The computed pre-release version for the release that was built
+        value: ${{ jobs.calculate-next-tag.outputs.next_tag }}
+
+jobs:
+  calculate-next-tag:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      next_tag: ${{ steps.set-outputs.outputs.next_tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+      # Checkout the trunk-container-action repository
+      - uses: actions/checkout@v4
+        with:
+          repository: 'Keyfactor/trunk-container-action'
+          path: './trunk-container-action/'
+          token: ${{ secrets.clone_token }}
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Calculate next version
+        id: calculate_version
+        run: python trunk-container-action/scripts/calculate_next_rc.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.gh_token }}
+          GHCR_ORG: ${{ inputs.ghcr_org }}
+          GHCR_IMAGE_NAME: ${{ inputs.ghcr_image_name }}
+
+      - name: Set Outputs
+        id: set-outputs
+        run: |
+          echo "next_tag=${{ env.NEXT_TAG }}" | tee -a "$GITHUB_OUTPUT"
+
+  container-build:
+    needs:
+      - calculate-next-tag
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJson(inputs.platforms) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare
+        run: |
+          platform=${{ matrix.platform }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV          
+          echo "REGISTRY_IMAGE=ghcr.io/${{ inputs.ghcr_org }}/${{ inputs.ghcr_image_name }}" >> $GITHUB_ENV
+      
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
+          tags: |
+            type=semver,pattern={{raw}},value=${{ needs.calculate-next-tag.outputs.next_tag }}
+      
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: 'Login to GitHub Container Registry'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.ghcr_username }}
+          password: ${{ secrets.ghcr_password }}
+
+      - name: Fetch Go Build Cache
+        if: ${{ inputs.cache_language == 'go' }}
+        uses: actions/cache@v4
+        with:
+          path: go-build-cache
+          key: ${{ runner.os }}-go-build-cache-${{ hashFiles('**/go.sum') }}
+
+      - name: Inject go-build-cache into Docker
+        if: ${{ inputs.cache_language == 'go' }}
+        uses: reproducible-containers/buildkit-cache-dance@4b2444fec0c0fb9dbf175a96c094720a692ef810 # v2.1.4
+        with:
+          cache-source: go-build-cache
+          cache-map: |
+            {
+              "go-build-cache": "/go/pkg/mod"
+            }
+      
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            VERSION=${{ needs.calculate-next-tag.outputs.next_tag }}
+            ${{ inputs.build_args }}
+          secrets: ${{ secrets.build_secrets }}
+          context: ${{ inputs.docker_context }}
+      
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"          
+      
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    runs-on: ubuntu-latest
+    needs:
+      - calculate-next-tag
+      - container-build
+    steps:
+      - name: Prepare
+        run: |
+          echo "REGISTRY_IMAGE=ghcr.io/${{ inputs.ghcr_org }}/${{ inputs.ghcr_image_name }}" >> $GITHUB_ENV
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
+          tags: |
+            type=semver,pattern={{raw}},value=${{ needs.calculate-next-tag.outputs.next_tag }}
+      
+      - name: 'Login to GitHub Container Registry'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.ghcr_username }}
+          password: ${{ secrets.ghcr_password }}
+      
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.REGISTRY_IMAGE }}@sha256:%s ' *)          
+      
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}          
+
