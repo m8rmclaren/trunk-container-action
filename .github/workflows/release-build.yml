@@ -4,11 +4,12 @@ on:
   workflow_call:
     inputs:
       ghcr_org:
-        description: The name of the org to publish GHCR packages into. e.g., 'keyfactor'
+        description: The name of the org to publish GHCR packages into. e.g., 'm8rmclaren'
         required: true
         type: string
+        default: "m8rmclaren"
       ghcr_image_name:
-        description: The name of the image. e.g., 'keyfactor-operator'
+        description: The name of the image. e.g., 'website'
         required: true
         type: string
       platforms:
