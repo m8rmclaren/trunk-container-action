@@ -23,14 +23,15 @@ def version_key(version_tuple):
 
 def main():
     token = os.environ.get('GITHUB_TOKEN')
-    owner = os.environ.get("GHCR_ORG")
+    org = os.environ.get("GHCR_ORG")
+    user = os.environ.get("GHCR_USER")
     package_name = os.environ.get("GHCR_IMAGE_NAME")
 
     if not token:
         print("GITHUB_TOKEN environment variable is not set.")
         sys.exit(1)
-    if not owner:
-        print("GHCR_ORG environment variable is not set.")
+    if not org and not user:
+        print("GHCR_ORG and GHCR_USER environment variable is not set.")
         sys.exit(1)
     if not package_name:
         print("GHCR_IMAGE_NAME environment variable is not set.")
@@ -38,7 +39,17 @@ def main():
 
     # URL-encode the package name
     package_name_encoded = quote(package_name, safe='')
-    api_url = f'https://api.github.com/orgs/{owner}/packages/container/{package_name_encoded}/versions'
+
+    if org:
+        user_or_org = "org"
+        owner = org
+        api_url = f'https://api.github.com/org/{org}/packages/container/{package_name_encoded}/versions'
+    else:
+        user_or_org = "user"
+        owner = user
+        api_url = f'https://api.github.com/user/packages/container/{package_name_encoded}/versions'
+
+    print(f"Using the {user_or_org} API ({api_url})")
 
     headers = {
         'Authorization': f'token {token}',

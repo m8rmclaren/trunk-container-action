@@ -4,8 +4,12 @@ on:
   workflow_call:
     inputs:
       ghcr_org:
-        description: The name of the org to publish GHCR packages into. e.g., 'm8rmclaren'
-        required: true
+        description: The name of the org to publish GHCR packages into. e.g., 'Contoso'
+        # required: true
+        type: string
+      ghcr_user:
+        description: The name of the user to publish GHCR packages into. e.g., 'm8rmclaren'
+        # required: true
         type: string
       ghcr_image_name:
         description: The name of the image. e.g., 'website'
@@ -84,6 +88,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.gh_token }}
           GHCR_ORG: ${{ inputs.ghcr_org }}
+          GHCR_USER: ${{ inputs.ghcr_user }}
           GHCR_IMAGE_NAME: ${{ inputs.ghcr_image_name }}
 
       - name: Set Outputs
@@ -105,7 +110,13 @@ jobs:
         run: |
           platform=${{ matrix.platform }}
           echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV          
-          echo "REGISTRY_IMAGE=ghcr.io/${{ inputs.ghcr_org }}/${{ inputs.ghcr_image_name }}" >> $GITHUB_ENV
+
+          if [ -n "${{ inputs.ghcr_org }}" ]; then
+            echo "REGISTRY_IMAGE=ghcr.io/${{ inputs.ghcr_org }}/${{ inputs.ghcr_image_name }}" >> $GITHUB_ENV
+          fi
+          if [ -n "${{ inputs.ghcr_user }}" ]; then
+            echo "REGISTRY_IMAGE=ghcr.io/${{ inputs.ghcr_user }}/${{ inputs.ghcr_image_name }}" >> $GITHUB_ENV
+          fi
       
       - name: Docker meta
         id: meta
@@ -182,7 +193,12 @@ jobs:
     steps:
       - name: Prepare
         run: |
-          echo "REGISTRY_IMAGE=ghcr.io/${{ inputs.ghcr_org }}/${{ inputs.ghcr_image_name }}" >> $GITHUB_ENV
+          if [ -n "${{ inputs.ghcr_org }}" ]; then
+            echo "REGISTRY_IMAGE=ghcr.io/${{ inputs.ghcr_org }}/${{ inputs.ghcr_image_name }}" >> $GITHUB_ENV
+          fi
+          if [ -n "${{ inputs.ghcr_user }}" ]; then
+            echo "REGISTRY_IMAGE=ghcr.io/${{ inputs.ghcr_user }}/${{ inputs.ghcr_image_name }}" >> $GITHUB_ENV
+          fi
 
       - name: Download digests
         uses: actions/download-artifact@v4
