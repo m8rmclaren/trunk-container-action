@@ -6,9 +6,6 @@ on:
       ghcr_org:
         description: The name of the org to publish GHCR packages into. e.g., 'keyfactor'
         type: string
-      ghcr_user:
-        description: The name of the user to publish GHCR packages into. e.g., 'm8rmclaren'
-        type: string
       ghcr_image_name:
         description: The name of the image. e.g., 'keyfactor-operator'
         required: true
@@ -35,7 +32,7 @@ jobs:
       # Checkout the trunk-container-action repository
       - uses: actions/checkout@v4
         with:
-          repository: 'Keyfactor/trunk-container-action'
+          repository: 'm8rmclaren/trunk-container-action'
           path: './trunk-container-action/'
           token: ${{ secrets.clone_token }}
           ref: ${{ inputs.ref }}
