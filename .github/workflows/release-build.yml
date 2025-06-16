@@ -71,7 +71,7 @@ jobs:
       # Checkout the trunk-container-action repository
       - uses: actions/checkout@v4
         with:
-          repository: 'Keyfactor/trunk-container-action'
+          repository: 'm8rmclaren/trunk-container-action'
           path: './trunk-container-action/'
           token: ${{ secrets.clone_token }}
           ref: ${{ inputs.ref }}
