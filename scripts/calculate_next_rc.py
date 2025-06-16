@@ -24,14 +24,10 @@ def version_key(version_tuple):
 def main():
     token = os.environ.get('GITHUB_TOKEN')
     org = os.environ.get("GHCR_ORG")
-    user = os.environ.get("GHCR_USER")
     package_name = os.environ.get("GHCR_IMAGE_NAME")
 
     if not token:
         print("GITHUB_TOKEN environment variable is not set.")
-        sys.exit(1)
-    if not org and not user:
-        print("GHCR_ORG and GHCR_USER environment variable is not set.")
         sys.exit(1)
     if not package_name:
         print("GHCR_IMAGE_NAME environment variable is not set.")
@@ -42,11 +38,9 @@ def main():
 
     if org:
         user_or_org = "org"
-        owner = org
         api_url = f'https://api.github.com/org/{org}/packages/container/{package_name_encoded}/versions'
     else:
         user_or_org = "user"
-        owner = user
         api_url = f'https://api.github.com/user/packages/container/{package_name_encoded}/versions'
 
     print(f"Using the {user_or_org} API ({api_url})")
@@ -67,7 +61,7 @@ def main():
             tags.extend(version.get('metadata', {}).get('container', {}).get('tags', []))
     else:
         if response.status_code == 404:
-            print(f"GitHub Package owned by {owner} called {package_name} doesn't exist yet.")
+            print(f"GitHub Package called {package_name} doesn't exist yet (owner: {org if org else 'user'})")
         else:
             print(f"Failed to get package versions. Status code: {response.status_code}")
             print(response.text)
