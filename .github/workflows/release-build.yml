@@ -5,7 +5,6 @@ on:
     inputs:
       ghcr_org:
         description: The name of the org to publish GHCR packages into. e.g., 'm8rmclaren'
-        required: true
         type: string
         default: "m8rmclaren"
       ghcr_user:
