@@ -8,6 +8,9 @@ on:
         required: true
         type: string
         default: "m8rmclaren"
+      ghcr_user:
+        description: The name of the user to publish GHCR packages into. e.g., 'm8rmclaren'
+        type: string
       ghcr_image_name:
         description: The name of the image. e.g., 'website'
         required: true
@@ -115,7 +118,12 @@ jobs:
     steps:
       - name: Prepare
         run: |
-          echo "REGISTRY_IMAGE=ghcr.io/${{ inputs.ghcr_org }}/${{ inputs.ghcr_image_name }}" >> $GITHUB_ENV
+          if [ -n "${{ inputs.ghcr_org }}" ]; then
+            echo "REGISTRY_IMAGE=ghcr.io/${{ inputs.ghcr_org }}/${{ inputs.ghcr_image_name }}" >> $GITHUB_ENV
+          fi
+          if [ -n "${{ inputs.ghcr_user }}" ]; then
+            echo "REGISTRY_IMAGE=ghcr.io/${{ inputs.ghcr_user }}/${{ inputs.ghcr_image_name }}" >> $GITHUB_ENV
+          fi
 
       - name: 'Login to GitHub Container Registry'
         uses: docker/login-action@v3
@@ -148,7 +156,13 @@ jobs:
         run: |
           platform=${{ matrix.platform }}
           echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV          
-          echo "REGISTRY_IMAGE=ghcr.io/${{ inputs.ghcr_org }}/${{ inputs.ghcr_image_name }}" >> $GITHUB_ENV
+
+          if [ -n "${{ inputs.ghcr_org }}" ]; then
+            echo "REGISTRY_IMAGE=ghcr.io/${{ inputs.ghcr_org }}/${{ inputs.ghcr_image_name }}" >> $GITHUB_ENV
+          fi
+          if [ -n "${{ inputs.ghcr_user }}" ]; then
+            echo "REGISTRY_IMAGE=ghcr.io/${{ inputs.ghcr_user }}/${{ inputs.ghcr_image_name }}" >> $GITHUB_ENV
+          fi
       
       - name: Docker meta
         id: meta

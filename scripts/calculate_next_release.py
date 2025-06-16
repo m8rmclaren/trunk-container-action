@@ -22,15 +22,12 @@ def parse_rc_version(tag, x, y):
 
 def main():
     token = os.environ.get('GITHUB_TOKEN')
-    owner = os.environ.get("GHCR_ORG")
+    org = os.environ.get("GHCR_ORG")
     package_name = os.environ.get("GHCR_IMAGE_NAME")
     github_ref_name = os.environ.get('BASE_REF_NAME')  # e.g., 'release-1.2'
 
     if not token:
         print("GITHUB_TOKEN environment variable is not set.")
-        sys.exit(1)
-    if not owner:
-        print("GHCR_ORG environment variable is not set.")
         sys.exit(1)
     if not package_name:
         print("GHCR_IMAGE_NAME environment variable is not set.")
@@ -50,7 +47,15 @@ def main():
 
     # URL-encode the package name
     package_name_encoded = quote(package_name, safe='')
-    api_url = f'https://api.github.com/orgs/{owner}/packages/container/{package_name_encoded}/versions?per_page=100'
+
+    if org:
+        user_or_org = "org"
+        api_url = f'https://api.github.com/org/{org}/packages/container/{package_name_encoded}/versions'
+    else:
+        user_or_org = "user"
+        api_url = f'https://api.github.com/user/packages/container/{package_name_encoded}/versions'
+
+    print(f"Using the {user_or_org} API ({api_url})")
 
     headers = {
         'Authorization': f'token {token}',
@@ -60,12 +65,13 @@ def main():
     versions_data = []
     page = 1
     while True:
-        response = requests.get(f"{api_url}&page={page}", headers=headers)
+        response = requests.get(f"{api_url}?page={page}", headers=headers)
 
         if response.status_code != 200:
             print(f"Failed to get package versions. Status code: {response.status_code}")
             print(response.text)
             sys.exit(1)
+        print(f"Fetched versions page {page}")
 
         data = response.json()
         if not data:
@@ -77,6 +83,8 @@ def main():
     for version in versions_data:
         # Each version may have multiple tags
         tags.extend(version.get('metadata', {}).get('container', {}).get('tags', []))
+
+    print(f"Fetched {len(tags)} versions in {page} pages")
 
     # Find existing tags matching x.y.*
     existing_ns = []

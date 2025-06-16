@@ -50,22 +50,32 @@ def main():
         'Accept': 'application/vnd.github+json'
     }
 
-    response = requests.get(api_url, headers=headers)
-
     tags = []
-    if response.status_code == 200:
-        versions_data = response.json()
+    page = 1
+    while True:
+        response = requests.get(f"{api_url}?page={page}", headers=headers)
 
-        for version in versions_data:
-            # Each version may have multiple tags
-            tags.extend(version.get('metadata', {}).get('container', {}).get('tags', []))
-    else:
-        if response.status_code == 404:
-            print(f"GitHub Package called {package_name} doesn't exist yet (owner: {org if org else 'user'})")
+        if response.status_code == 200:
+            versions_data = response.json()
+            if not versions_data:
+                break
+
+            for version in versions_data:
+                # Each version may have multiple tags
+                tags.extend(version.get('metadata', {}).get('container', {}).get('tags', []))
         else:
-            print(f"Failed to get package versions. Status code: {response.status_code}")
-            print(response.text)
-            sys.exit(1)
+            if response.status_code == 404:
+                print(f"GitHub Package called {package_name} doesn't exist yet (owner: {org if org else 'user'})")
+                break
+            else:
+                print(f"Failed to get package versions. Status code: {response.status_code}")
+                print(response.text)
+                sys.exit(1)
+
+        print(f"Fetched versions page {page}")
+        page += 1
+
+    print(f"Fetched {len(tags)} versions in {page} pages")
 
     if not tags:
         # No tags found
