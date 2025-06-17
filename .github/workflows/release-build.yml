@@ -237,7 +237,12 @@ jobs:
     steps:
       - name: Prepare
         run: |
-          echo "REGISTRY_IMAGE=ghcr.io/${{ inputs.ghcr_org }}/${{ inputs.ghcr_image_name }}" >> $GITHUB_ENV
+          if [ -n "${{ inputs.ghcr_org }}" ]; then
+            echo "REGISTRY_IMAGE=ghcr.io/${{ inputs.ghcr_org }}/${{ inputs.ghcr_image_name }}" >> $GITHUB_ENV
+          fi
+          if [ -n "${{ inputs.ghcr_user }}" ]; then
+            echo "REGISTRY_IMAGE=ghcr.io/${{ inputs.ghcr_user }}/${{ inputs.ghcr_image_name }}" >> $GITHUB_ENV
+          fi
 
       - name: Download digests
         uses: actions/download-artifact@v4
